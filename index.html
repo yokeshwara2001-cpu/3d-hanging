@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hanging Spidey Multi-Figure Widget</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    .widget-root {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      position: relative;
+    }
+
+    /* Top anchor bezel node */
+    .top-anchor {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 14px;
+      height: 5px;
+      background: radial-gradient(circle, #ffffff 60%, rgba(200, 200, 230, 0.8));
+      border-radius: 0 0 10px 10px;
+      box-shadow: 0 2px 6px rgba(255, 255, 255, 0.9);
+      z-index: 20;
+    }
+
+    /* Swinging physics container */
+    .spidey-swing {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform-origin: top center;
+      animation: pendulum 3.6s ease-in-out infinite alternate;
+      cursor: grab;
+      position: relative;
+    }
+
+    .spidey-swing:active {
+      cursor: grabbing;
+    }
+
+    /* Web lead strand that smoothly stretches when Spidey drops down */
+    .web-lead {
+      width: 2px;
+      height: 14px;
+      background: linear-gradient(to bottom, #ffffff, rgba(230, 230, 240, 0.9));
+      box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+      transition: height 1.4s cubic-bezier(0.34, 1.25, 0.64, 1);
+    }
+
+    /* Lowered state when web drops down */
+    .spidey-swing.lowered .web-lead {
+      height: 90px;
+    }
+
+    .spidey-swing.lowered .speech-bubble {
+      top: 295px;
+    }
+
+    /* Spidey figure wrapper */
+    .spidey-character {
+      width: 120px;
+      position: relative;
+      filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.45));
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
+    }
+
+    .spidey-character:hover {
+      transform: scale(1.06);
+    }
+
+    .spidey-character:active {
+      transform: scale(0.96);
+    }
+
+    .spidey-img {
+      width: 100%;
+      height: auto;
+      display: block;
+      pointer-events: auto;
+      transition: filter 0.2s;
+    }
+
+    /* Switching figure animation */
+    .figure-swap {
+      animation: popSwap 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes popSwap {
+      0% { transform: scale(0.7) rotate(-10deg); opacity: 0.3; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+
+    /* Comic speech bubble */
+    .speech-bubble {
+      position: absolute;
+      top: 220px;
+      left: 50%;
+      transform: translateX(-50%) scale(0);
+      background: #ffffff;
+      color: #111;
+      padding: 7px 13px;
+      border-radius: 14px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: normal;
+      width: max-content;
+      max-width: 185px;
+      text-align: center;
+      line-height: 1.35;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      border: 2px solid #111;
+      pointer-events: none;
+      opacity: 0;
+      transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease, top 1.4s cubic-bezier(0.34, 1.25, 0.64, 1);
+      z-index: 100;
+    }
+
+    .speech-bubble::before {
+      content: '';
+      position: absolute;
+      top: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-width: 0 8px 8px 8px;
+      border-style: solid;
+      border-color: transparent transparent #111 transparent;
+    }
+
+    .speech-bubble::after {
+      content: '';
+      position: absolute;
+      top: -5px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-width: 0 6px 6px 6px;
+      border-style: solid;
+      border-color: transparent transparent #fff transparent;
+    }
+
+    .speech-bubble.show {
+      transform: translateX(-50%) scale(1);
+      opacity: 1;
+    }
+
+    /* Figure Switcher controls bar: COMPLETELY HIDDEN by default */
+    .switcher-bar {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-6px) scale(0.92);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(18, 18, 22, 0.9);
+      backdrop-filter: blur(8px);
+      padding: 4px 8px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease;
+      z-index: 60;
+    }
+
+    .switcher-bar.visible {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateX(-50%) translateY(0) scale(1);
+    }
+
+    .btn-nav {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.15s;
+    }
+
+    .btn-nav:hover {
+      background: #e62429;
+      transform: scale(1.12);
+    }
+
+    .figure-label {
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      max-width: 110px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Close button top right: COMPLETELY HIDDEN by default */
+    .btn-close {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(20, 20, 20, 0.75);
+      backdrop-filter: blur(4px);
+      color: #bbb;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease, background 0.15s;
+      z-index: 70;
+    }
+
+    .btn-close.visible {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .btn-close:hover {
+      background: #e62429;
+      color: #fff;
+      transform: scale(1.1);
+    }
+
+    /* Pendulum swing */
+    @keyframes pendulum {
+      0% { transform: rotate(-5.5deg); }
+      50% { transform: rotate(0deg); }
+      100% { transform: rotate(5.5deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-root">
+
+    <div class="top-anchor"></div>
+
+    <!-- Close button -->
+    <div class="btn-close interactive-target" id="closeBtn" title="Close Widget">✕</div>
+
+    <!-- Switcher bar on hover -->
+    <div class="switcher-bar interactive-target" id="switcherBar">
+      <div class="btn-nav" id="prevBtn" title="Previous figure (or Scroll Up)">◀</div>
+      <div class="figure-label" id="figureLabel">Figure 1/3</div>
+      <div class="btn-nav" id="nextBtn" title="Next figure (or Scroll Down / Double-Click)">▶</div>
+    </div>
+
+    <!-- Swinging Figure Container -->
+    <div class="spidey-swing interactive-target" id="swingContainer">
+      <div class="web-lead"></div>
+      
+      <div class="spidey-character" id="spideyChar">
+        <img 
+          src="assets/1_spidey_homecoming.png" 
+          class="spidey-img" 
+          id="spideyImg" 
+          alt="Hanging Figure" 
+        />
+      </div>
+
+      <!-- Speech Bubble -->
+      <div class="speech-bubble" id="speechBubble">Just hanging around! 🕷️</div>
+    </div>
+
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    const fs = require('fs');
+    const path = require('path');
+
+    const swingContainer = document.getElementById('swingContainer');
+    const spideyChar = document.getElementById('spideyChar');
+    const spideyImg = document.getElementById('spideyImg');
+    const speechBubble = document.getElementById('speechBubble');
+    const figureLabel = document.getElementById('figureLabel');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const closeBtn = document.getElementById('closeBtn');
+
+    // Discover figure assets in assets/ folder
+    const assetsDir = path.join(__dirname, 'assets');
+    let figureList = [];
+
+    // Massive authentic character presets & comic quips
+    const characterData = {
+      'homecoming': {
+        name: 'MCU Spidey',
+        quips: [
+          "Spider-Sense is tingling! ⚡",
+          "Just hanging around! 🕷️",
+          "Mr. Stark, it smells like a new car in here!",
+          "Queens in the house! 🗽",
+          "Karen, what is the user working on right now?",
+          "Don't forget to save your code! 💾",
+          "I survived Thanos, you can survive this bug!",
+          "Watching you code from up here!",
+          "Aunt May thinks I'm studying at the library...",
+          "My web-shooters are at 99% charge!",
+          "Is that a bug or an undocumented feature? 😉",
+          "Ned said I should check in on you! 🎮",
+          "All the blood is in my head... still awesome!",
+          "Hydrate or die-drate! Drink some water! 💧",
+          "With great power comes great responsibility! ✨",
+          "Thwip! Need a web sling to the next task?",
+          "Upside down makes the code look cleaner!",
+          "I could swing by and grab some Thai food...",
+          "Don't worry, the web holds up to 2 tons!",
+          "That was smooth! Keep up the momentum! 🔥",
+          "Web fluid formula: pure genius!"
+        ]
+      },
+      'amazing': {
+        name: 'Amazing Spidey',
+        quips: [
+          "I'm Spider-Man! Need a hand? 🕸️",
+          "You found my only weakness: small knives!",
+          "A god named Sparkles? Seriously?",
+          "I stopped pulling my punches, but never my bugs!",
+          "Did you hear that guitar riff? That's my theme song! 🎸",
+          "Science is the ultimate superpower. 🔬",
+          "Nobody likes a bug, especially a spider!",
+          "Don't worry, I always catch you! 🏙️",
+          "I love you guys! Group hug? ❤️",
+          "Gwen would love this desktop setup! 🎒",
+          "Doing Spider-Cop things... wait, wrong universe!",
+          "Hang in there! Literally, like me!",
+          "That code flow is looking clean! 🚀",
+          "Need me to web-zip down and hit Enter?",
+          "You're in the friend zone, Spider-Man!",
+          "You have a knack for getting into trouble, huh?",
+          "Thwip! Look at that swing physics!",
+          "Second best Spider-Man? Hey, I'm amazing!",
+          "I gotta swing through Times Square later!"
+        ]
+      },
+      'symbiote': {
+        name: 'Symbiote Spidey',
+        quips: [
+          "This feels... good. 🖤",
+          "See ya chump! 🕷️",
+          "Now dig on this! 🕺",
+          "I'm gonna put some dirt in your eye.",
+          "You want forgiveness? Get religion.",
+          "Pizza time! 🍕",
+          "I missed the part where that's my problem.",
+          "Gonna cry? 😉",
+          "Black suit brings out my eyes, don't you think?",
+          "Drive that funky soul! 🎶",
+          "Double the strength, double the speed, zero bugs.",
+          "They love me! 🌟",
+          "Get me pictures of Spider-Man!",
+          "I'm really gonna enjoy this.",
+          "No more Mr. Nice Spidey.",
+          "Stings, doesn't it?",
+          "Still got the moves!"
+        ]
+      }
+    };
+
+    function loadFigures() {
+      try {
+        const files = fs.readdirSync(assetsDir);
+        figureList = files.filter(f => {
+          return /\.(png|webp)$/i.test(f) && !f.includes('temp');
+        }).sort();
+      } catch (err) {
+        console.error('Error reading assets:', err);
+      }
+
+      if (figureList.length === 0) {
+        figureList = ['1_spidey_homecoming.png'];
+      }
+    }
+
+    loadFigures();
+
+    let currentIndex = 0;
+    let bubbleTimeout;
+    let lastQuipIndex = -1;
+
+    function getFigureMeta(filename) {
+      const lower = filename.toLowerCase();
+      if (lower.includes('amazing') || lower.includes('tasm')) {
+        return characterData.amazing;
+      } else if (lower.includes('symbiote') || lower.includes('black')) {
+        return characterData.symbiote;
+      } else if (lower.includes('homecoming') || lower.includes('mcu')) {
+        return characterData.homecoming;
+      }
+      
+      const cleanName = filename.replace(/^\d+_/, '').replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
+      return {
+        name: cleanName.charAt(0).toUpperCase() + cleanName.slice(1),
+        quips: [
+          "Just hanging around! 🕷️",
+          "Spider-Sense is tingling! ⚡",
+          "With great power comes great responsibility!",
+          "Upside down is the right side up!"
+        ]
+      };
+    }
+
+    function switchFigure(newIndex) {
+      if (figureList.length === 0) return;
+      currentIndex = (newIndex + figureList.length) % figureList.length;
+      lastQuipIndex = -1;
+      
+      const file = figureList[currentIndex];
+      const meta = getFigureMeta(file);
+
+      spideyChar.classList.remove('figure-swap');
+      void spideyChar.offsetWidth;
+      spideyChar.classList.add('figure-swap');
+
+      spideyImg.src = `assets/${file}`;
+      figureLabel.textContent = `${currentIndex + 1}/${figureList.length} ${meta.name}`;
+
+      showQuip(meta.quips[0]);
+    }
+
+    function showQuip(text) {
+      speechBubble.textContent = text;
+      speechBubble.classList.add('show');
+      clearTimeout(bubbleTimeout);
+      bubbleTimeout = setTimeout(() => {
+        speechBubble.classList.remove('show');
+      }, 3400);
+    }
+
+    function showRandomQuip() {
+      const file = figureList[currentIndex];
+      const meta = getFigureMeta(file);
+      const list = meta.quips;
+      
+      let idx;
+      if (list.length <= 1) {
+        idx = 0;
+      } else {
+        do {
+          idx = Math.floor(Math.random() * list.length);
+        } while (idx === lastQuipIndex);
+      }
+      lastQuipIndex = idx;
+      showQuip(list[idx]);
+    }
+
+    // Occasional idle chat every 90 seconds
+    setInterval(() => {
+      if (!speechBubble.classList.contains('show')) {
+        showRandomQuip();
+      }
+    }, 90000);
+
+    // Initialize first figure
+    switchFigure(0);
+
+    // Navigation buttons
+    prevBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      switchFigure(currentIndex - 1);
+    });
+
+    nextBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      switchFigure(currentIndex + 1);
+    });
+
+    // Double-click character to switch to next figure
+    spideyChar.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      switchFigure(currentIndex + 1);
+    });
+
+    // Single click character to talk
+    spideyChar.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showRandomQuip();
+    });
+
+    // Mouse wheel scroll over Spidey to cycle figures
+    swingContainer.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.deltaY > 0) {
+        switchFigure(currentIndex + 1);
+      } else {
+        switchFigure(currentIndex - 1);
+      }
+    });
+
+    // --- 2-Minute Web Drop & Reel Animation ---
+    let isLowered = false;
+    let reelTimeout = null;
+
+    const dropQuotes = [
+      "Going down! Floor 1: your desktop! 🕷️",
+      "Dropping in to say hi! 🕸️",
+      "Thwip! Lowering down to inspect your code!",
+      "Just lowering my standards... literally! 😉",
+      "Spider-Sense brought me down here! ⚡",
+      "Getting a closer look at what you're building! 💻",
+      "Upside down drop test: 100% success! ✨"
+    ];
+
+    function lowerSpidey() {
+      if (isLowered) return;
+      isLowered = true;
+      swingContainer.classList.add('lowered');
+
+      const randomDrop = dropQuotes[Math.floor(Math.random() * dropQuotes.length)];
+      showQuip(randomDrop);
+
+      // Hangs down swinging for 18 seconds, then reels smoothly back up
+      clearTimeout(reelTimeout);
+      reelTimeout = setTimeout(() => {
+        reelSpideyUp();
+      }, 18000);
+    }
+
+    function reelSpideyUp() {
+      if (!isLowered) return;
+      isLowered = false;
+      swingContainer.classList.remove('lowered');
+      clearTimeout(reelTimeout);
+    }
+
+    function toggleWebDrop() {
+      if (isLowered) {
+        reelSpideyUp();
+      } else {
+        lowerSpidey();
+      }
+    }
+
+    // Automatically trigger web drop every 2 minutes (120,000 ms)
+    setInterval(() => {
+      lowerSpidey();
+    }, 120000);
+
+    // Keyboard controls: Arrow keys to switch, Space or 'D' to drop/reel web
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        switchFigure(currentIndex + 1);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        switchFigure(currentIndex - 1);
+      } else if (e.key === ' ' || e.key.toLowerCase() === 'd') {
+        toggleWebDrop();
+      } else if (!isNaN(e.key) && Number(e.key) >= 1 && Number(e.key) <= figureList.length) {
+        switchFigure(Number(e.key) - 1);
+      }
+    });
+
+    // --- Show controls ONLY when mouse hovers over Spidey or the controls ---
+    const switcherBar = document.getElementById('switcherBar');
+    let hideTimer = null;
+
+    function showControls() {
+      clearTimeout(hideTimer);
+      switcherBar.classList.add('visible');
+      closeBtn.classList.add('visible');
+    }
+
+    function hideControls() {
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        switcherBar.classList.remove('visible');
+        closeBtn.classList.remove('visible');
+      }, 180);
+    }
+
+    spideyChar.addEventListener('mouseenter', showControls);
+    spideyChar.addEventListener('mouseleave', hideControls);
+    switcherBar.addEventListener('mouseenter', showControls);
+    switcherBar.addEventListener('mouseleave', hideControls);
+    closeBtn.addEventListener('mouseenter', showControls);
+    closeBtn.addEventListener('mouseleave', hideControls);
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      ipcRenderer.send('quit-app');
+    });
+
+    // --- Dynamic Mouse Transparency Pass-Through ---
+    const interactiveTargets = document.querySelectorAll('.interactive-target');
+    interactiveTargets.forEach(el => {
+      el.addEventListener('mouseenter', () => {
+        ipcRenderer.send('set-ignore-mouse-events', false);
+      });
+      el.addEventListener('mouseleave', () => {
+        ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+      });
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+    });
+
+    // Drag to Reposition
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+
+    swingContainer.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.btn-nav') || e.target.closest('.btn-close')) return;
+      isDragging = true;
+      startX = e.screenX;
+      startY = e.screenY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const deltaX = e.screenX - startX;
+      const deltaY = e.screenY - startY;
+      startX = e.screenX;
+      startY = e.screenY;
+      ipcRenderer.send('move-window', { deltaX, deltaY });
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+  </script>
+</body>
+</html>
